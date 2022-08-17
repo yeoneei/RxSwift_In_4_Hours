@@ -35,16 +35,57 @@ class ViewController: UIViewController {
     // MARK: SYNC
 
     @IBOutlet var activityIndicator: UIActivityIndicatorView!
+    
+    func downloadJson(_ url: String) -> Observable<String>{
+        // 1. 비동기로 생기는 데이터를 Observable로 감싸서 리턴하는 타입
+        return Observable.create() { emitter in
+            let url = URL(string: url)!
+            let task = URLSession.shared.dataTask(with: url){ (data, _ , err) in
+                guard err == nil else {
+                    emitter.onError(err!)
+                    return
+                }
+                
+                if let dat = data, let json = String(data: dat, encoding: .utf8){
+                    // next로 json전달
+                    emitter.onNext(json)
+                }
+                
+                emitter.onCompleted() // 끝났다
+            }
+            
+            task.resume()
+            return Disposables.create(){
+                // 중간에 캔슬하면
+                task.cancel()
+            }
+
+        }
+    }
+    
+    func sendHelloWorld() -> Observable<String?>{
+        return Observable.just("hello world")
+    }
 
     @IBAction func onLoad() {
         editView.text = ""
         setVisibleWithAnimation(activityIndicator, true)
-
-        let url = URL(string: MEMBER_LIST_URL)!
-        let data = try! Data(contentsOf: url)
-        let json = String(data: data, encoding: .utf8)
-        self.editView.text = json
         
-        self.setVisibleWithAnimation(self.activityIndicator, false)
+        let observable = downloadJson(MEMBER_LIST_URL)
+        
+        
+        let dispose = observable.subscribe{ event in
+                switch event {
+                case let .next(json):
+                    DispatchQueue.main.async {
+                        self.editView.text = json
+                        self.setVisibleWithAnimation(self.activityIndicator, false)
+                    }
+                case .completed:
+                    break
+                case .error:
+                    break
+                }
+        }
     }
 }
